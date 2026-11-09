@@ -8,7 +8,7 @@ from fpdf import FPDF
 
 # Configuração da Página
 st.set_page_config(
-    page_title="TSG - Auditor Registral Rural",
+    page_title="AUDITOR TSG",
     page_icon="🗺️",
     layout="wide"
 )
@@ -24,8 +24,8 @@ def verificar_acesso():
     if not st.session_state.autenticado:
         col_esq, col_centro, col_dir = st.columns([1, 2, 1])
         with col_centro:
-            st.markdown("## 🔒 TSG Soluções Ambientais e Topografia")
-            st.markdown("### Acesso Restrito ao Sistema de Auditoria Registral")
+            st.markdown("## 🔒 TSG Soluções Ambientais, Topografia e Georreferenciamento")
+            st.markdown("### Acesso Restrito - AUDITOR TSG")
             senha_digitada = st.text_input("Introduza a palavra-passe de acesso:", type="password")
             if st.button("Entrar", type="primary", use_container_width=True):
                 if senha_digitada == senha_correta:
@@ -66,37 +66,33 @@ class AuditoriaPDF(FPDF):
         caminho_logo = obter_caminho_logo()
         if caminho_logo:
             self.image(caminho_logo, x=12, y=6, w=34)
-            self.set_xy(48, 8)
+            self.set_xy(48, 10)
             largura_texto = self.epw - 36
         else:
-            self.set_xy(12, 8)
+            self.set_xy(12, 10)
             largura_texto = self.epw
 
-        self.set_font("Helvetica", "B", 12)
+        # Título Corporativo TSG (sem o subtítulo longo)
+        self.set_font("Helvetica", "B", 13)
         self.set_text_color(20, 45, 30)
-        self.cell(largura_texto, 6, "TSG - RELATORIO DE AUDITORIA NOTARIAL E REGISTRAL RURAL", border=0, new_x="LMARGIN", new_y="NEXT", align="L")
+        self.cell(largura_texto, 8, "TSG - RELATORIO DE AUDITORIA NOTARIAL E REGISTRAL RURAL", border=0, new_x="LMARGIN", new_y="NEXT", align="L")
         
-        if caminho_logo:
-            self.set_x(48)
-            
-        self.set_font("Helvetica", "I", 8)
-        self.set_text_color(100, 100, 100)
-        self.cell(largura_texto, 4, "Solucoes Ambientais, Topografia e Georreferenciamento | Auditoria Registral e Cadastral", border=0, new_x="LMARGIN", new_y="NEXT", align="L")
-        
-        self.ln(3)
+        # Linha decorativa verde institucional da TSG
+        self.ln(2)
         self.set_draw_color(34, 112, 62)
         self.set_line_width(0.4)
-        self.line(12, 23, 12 + self.epw, 23)
+        self.line(12, 22, 12 + self.epw, 22)
         self.set_draw_color(180, 185, 195)
         self.set_line_width(0.2)
         self.set_text_color(0, 0, 0)
-        self.set_y(26)
+        self.set_y(25)
 
     def footer(self):
         self.set_y(-12)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(120, 120, 120)
-        self.cell(self.epw, 10, f"TSG Solucoes Ambientais e Topografia | Pagina {self.page_no()}/{{nb}}", align="C")
+        # Rodapé completo corrigido
+        self.cell(self.epw, 10, f"TSG Solucoes Ambientais, Topografia e Georreferenciamento | Pagina {self.page_no()}/{{nb}}", align="C")
         self.set_text_color(0, 0, 0)
 
 def sanitizar_para_pdf(texto: str) -> str:
@@ -263,11 +259,10 @@ ESTRUTURA OBRIGATORIA DO RELATORIO:
 """
 
 # ----------------- INTERFACE GRÁFICA -----------------
-st.sidebar.title("Painel TSG")
-
+# Imagem da logo exibida diretamente sem o título "Painel TSG"
 logo_encontrada = obter_caminho_logo()
 if logo_encontrada:
-    st.sidebar.image(logo_encontrada, width=150)
+    st.sidebar.image(logo_encontrada, width=160)
 
 model_name = st.sidebar.selectbox(
     "Modelo de IA",
@@ -279,8 +274,9 @@ if st.sidebar.button("Terminar Sessão"):
     st.session_state.autenticado = False
     st.rerun()
 
-st.title("🗺️ TSG - Auditor Registral e Georreferenciamento Rural")
-st.caption("Plataforma Web Cloud protegida para conferência prévia de processos imobiliários.")
+# Título Atualizado da Aplicação
+st.title("AUDITOR TSG")
+st.caption("Conferência prévia de peças técnicas completas OU auditoria registral isolada da matrícula.")
 
 col1, col2 = st.columns(2)
 
