@@ -61,6 +61,31 @@ def obter_caminho_logo():
             pass
     return None
 
+def extrair_numero_matricula(texto_relatorio: str, nome_arquivo_fallback: str = "") -> str:
+    """Extrai o número da matrícula paradigma do relatório e sanitiza para uso seguro no nome do arquivo."""
+    # Procura padrões como: "Matrícula nº 6.100", "Matrícula 6100", "Mat. nº 12.345", "Matrícula: 450"
+    padroes = [
+        r"(?i)matr[ií]cula\s*(?:n[º°o\.]*|de\s*origem)?\s*[:\-]?\s*([0-9][0-9\.\-\/]*)",
+        r"(?i)mat\.?\s*(?:n[º°o\.]*)?\s*[:\-]?\s*([0-9][0-9\.\-\/]*)"
+    ]
+    for padrao in padroes:
+        match = re.search(padrao, texto_relatorio)
+        if match:
+            num = match.group(1).strip().rstrip(".")
+            # Remove caracteres proibidos em nomes de arquivos do Windows/Linux
+            num_limpo = re.sub(r'[\\/*?:"<>|]', '-', num)
+            if num_limpo:
+                return num_limpo
+
+    # Caso não encontre no texto, tenta extrair números do nome do arquivo PDF carregado
+    if nome_arquivo_fallback:
+        base = os.path.splitext(nome_arquivo_fallback)[0]
+        base_limpa = re.sub(r'[\\/*?:"<>|]', '-', base).strip()
+        if base_limpa:
+            return base_limpa
+
+    return "NAO_IDENTIFICADA"
+
 class AuditoriaPDF(FPDF):
     def header(self):
         caminho_logo = obter_caminho_logo()
@@ -72,7 +97,7 @@ class AuditoriaPDF(FPDF):
             self.set_xy(12, 10)
             largura_texto = self.epw
 
-        # Título Corporativo TSG (sem o subtítulo longo)
+        # Título Corporativo TSG
         self.set_font("Helvetica", "B", 13)
         self.set_text_color(20, 45, 30)
         self.cell(largura_texto, 8, "TSG - RELATORIO DE AUDITORIA NOTARIAL E REGISTRAL RURAL", border=0, new_x="LMARGIN", new_y="NEXT", align="L")
@@ -91,7 +116,6 @@ class AuditoriaPDF(FPDF):
         self.set_y(-12)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(120, 120, 120)
-        # Rodapé completo corrigido
         self.cell(self.epw, 10, f"TSG Solucoes Ambientais, Topografia e Georreferenciamento | Pagina {self.page_no()}/{{nb}}", align="C")
         self.set_text_color(0, 0, 0)
 
@@ -259,7 +283,6 @@ ESTRUTURA OBRIGATORIA DO RELATORIO:
 """
 
 # ----------------- INTERFACE GRÁFICA -----------------
-# Imagem da logo exibida diretamente sem o título "Painel TSG"
 logo_encontrada = obter_caminho_logo()
 if logo_encontrada:
     st.sidebar.image(logo_encontrada, width=160)
@@ -274,7 +297,6 @@ if st.sidebar.button("Terminar Sessão"):
     st.session_state.autenticado = False
     st.rerun()
 
-# Título Atualizado da Aplicação
 st.title("AUDITOR TSG")
 st.caption("Conferência prévia de peças técnicas completas OU auditoria registral isolada da matrícula.")
 
@@ -401,11 +423,15 @@ if st.button("🔍 Executar Auditoria TSG", type="primary", use_container_width=
             st.markdown(response.text)
 
             pdf_bytes = exportar_para_pdf(response.text)
+            
+            # Extrai o número da matrícula mãe e monta o nome solicitado
+            num_matricula = extrair_numero_matricula(response.text, uploaded_matricula_mae.name)
+            nome_arquivo_pdf = f"TSG_AUDITORIA_MAT_{num_matricula}.pdf"
 
             st.download_button(
-                label="📥 Descarregar Relatório Timbrado TSG em PDF",
+                label=f"📥 Descarregar {nome_arquivo_pdf}",
                 data=pdf_bytes,
-                file_name="TSG_auditoria_rural.pdf",
+                file_name=nome_arquivo_pdf,
                 mime="application/pdf",
                 type="primary"
             )
