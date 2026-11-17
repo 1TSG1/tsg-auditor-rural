@@ -61,28 +61,38 @@ def obter_caminho_logo():
             pass
     return None
 
-def extrair_numero_matricula(texto_relatorio: str, nome_arquivo_fallback: str = "") -> str:
-    """Extrai o número da matrícula paradigma do relatório e sanitiza para uso seguro no nome do arquivo."""
-    # Procura padrões como: "Matrícula nº 6.100", "Matrícula 6100", "Mat. nº 12.345", "Matrícula: 450"
+def extrair_numero_matricula(texto_relatorio: str, lista_arquivos_mae: list = None) -> str:
+    """Extrai o(s) número(s) da(s) matrícula(s) paradigma do relatório ou dos nomes dos arquivos."""
+    # Busca na seção inicial do relatório (onde o imóvel paradigma é identificado)
+    cabecalho_relatorio = texto_relatorio[:1500]
     padroes = [
-        r"(?i)matr[ií]cula\s*(?:n[º°o\.]*|de\s*origem)?\s*[:\-]?\s*([0-9][0-9\.\-\/]*)",
+        r"(?i)matr[ií]culas?\s*(?:n[º°o\.]*|de\s*origem)?\s*[:\-]?\s*([0-9][0-9\.\-\/]*)",
         r"(?i)mat\.?\s*(?:n[º°o\.]*)?\s*[:\-]?\s*([0-9][0-9\.\-\/]*)"
     ]
+    
+    encontrados = []
     for padrao in padroes:
-        match = re.search(padrao, texto_relatorio)
-        if match:
-            num = match.group(1).strip().rstrip(".")
-            # Remove caracteres proibidos em nomes de arquivos do Windows/Linux
+        matches = re.findall(padrao, cabecalho_relatorio)
+        for m in matches:
+            num = m.strip().rstrip(".")
             num_limpo = re.sub(r'[\\/*?:"<>|]', '-', num)
-            if num_limpo:
-                return num_limpo
+            if num_limpo and num_limpo not in encontrados:
+                encontrados.append(num_limpo)
+                
+    if encontrados:
+        # Limita a até 4 matrículas no nome do arquivo para não estourar o limite de caracteres do Windows
+        return "_".join(encontrados[:4])
 
-    # Caso não encontre no texto, tenta extrair números do nome do arquivo PDF carregado
-    if nome_arquivo_fallback:
-        base = os.path.splitext(nome_arquivo_fallback)[0]
-        base_limpa = re.sub(r'[\\/*?:"<>|]', '-', base).strip()
-        if base_limpa:
-            return base_limpa
+    # Fallback: usa os nomes dos arquivos enviados no campo da matrícula mãe
+    if lista_arquivos_mae:
+        nomes_limpos = []
+        for arq in lista_arquivos_mae:
+            base = os.path.splitext(arq.name)[0]
+            base_limpa = re.sub(r'[\\/*?:"<>|]', '-', base).strip()
+            if base_limpa:
+                nomes_limpos.append(base_limpa)
+        if nomes_limpos:
+            return "_".join(nomes_limpos[:3])
 
     return "NAO_IDENTIFICADA"
 
@@ -236,9 +246,10 @@ def renderizar_tabela_markdown(pdf: AuditoriaPDF, linhas_tabela: list):
 
 # ----------------- PROMPTS ESPECIALISTAS -----------------
 PROMPT_AUDITORIA_COMPLETA = """
-Voce e um Engenheiro Agrimensor e Consultor Juridico Notarial/Registral senior da empresa TSG - Solucoes Ambientais, Topografia e Georreferenciamento, especializado em Direito Notarial e Registral Imobiliario Brasileiro, Lei 6.015/1973 (Arts. 212 e 213), Lei 10.267/2001 e Normas Tecnicas do INCRA/SIGEF.
+Voce e um Engenheiro Agrimensor e Consultor Juridico Notarial/Registral senior da empresa TSG - Solucoes Ambientais, Topografia e Georreferenciamento, especializado em Direito Notarial e Registral Imobiliario Brasileiro, Lei 6.015/1973 (Arts. 212, 213, 234 e 235), Lei 10.267/2001 e Normas Tecnicas do INCRA/SIGEF.
 
-Sua tarefa e fazer a auditoria cruzada estrita entre a Matricula Paradigma, Matriculas dos Confrontantes e as Pecas Tecnicas.
+Sua tarefa e fazer a auditoria cruzada estrita entre a(s) Matricula(s) Paradigma(s), Matriculas dos Confrontantes e as Pecas Tecnicas.
+Caso seja apresentada mais de uma Matricula Paradigma (hipotese de UNIFICACAO/FUSAO de imoveis contiguos com retificacao), verifique a identidade de proprietarios/condominos, regime de bens, contiguidade fisica e a soma das areas tabulares em confronto com a area total retificada/unificada.
 Esta e uma ANALISE PREVIA DE MINUTAS.
 
 CRITERIOS E PARAMETROS ESPECIFICOS:
@@ -246,39 +257,39 @@ CRITERIOS E PARAMETROS ESPECIFICOS:
    - Restrinja a conferencia dos confrontantes estritamente aos dados inseridos nas pecas tecnicas: Nome completo, CPF, matricula do confrontante e denominacao do imovel.
    - Pluralidade de Proprietarios: Se a matricula do confrontante tiver multiplos coproprietarios, considere REGULAR e suficiente a indicacao de apenas 1 deles como representante anuente formalizado.
    - Ignore ausencia de reconhecimento de firma ou carimbos notariais (analise pre-impressao).
-2. Imovel Paradigma:
-   - Denominacao, Comarca, CNS, Matricula, codigos cadastrais (INCRA/SNCR, NIRF/CIB, CAR e SIGEF).
-   - Continuidade e Disponibilidade: Verificar titularidade atual e gravames/penhoras.
+2. Imovel(is) Paradigma(s):
+   - Denominacao, Comarca, CNS, Matricula(s), codigos cadastrais (INCRA/SNCR, NIRF/CIB, CAR e SIGEF).
+   - Continuidade, Unificacao e Disponibilidade: Verificar titularidade atual (identidade subjetiva para fusao, se houver mais de uma matricula) e gravames/penhoras.
 3. Coerencia Tecnica:
    - Area (ha e m²) e perimetro identicos em Memorial Descritivo, Planta Topografica, Requerimento e ART/TRT.
    - Responsavel Tecnico (Nome, Conselho e Codigo INCRA) uniformes.
 
 ESTRUTURA OBRIGATORIA DO RELATORIO:
-1. Resumo do Imovel e Conformidade Geral (EM TEXTO E TOPICOS, indicando Status: APTO / INAPTO COM EXIGENCIAS / DIVERGENCIAS CRITICAS).
+1. Resumo do(s) Imovel(is) e Conformidade Geral (EM TEXTO E TOPICOS, informando todas as matriculas envolvidas e indicando Status: APTO / INAPTO COM EXIGENCIAS / DIVERGENCIAS CRITICAS).
 2. Tabela de Matriz de Confrontacoes e Anuencias (EM TABELA MARKDOWN: Segmento/Vértices, Confrontante Declarado, Matrícula Confrontante, Proprietário Tabular, Representante Declarado, CPF, Situação Notarial).
 3. Matriz de Inconsistencias Tecnicas e Cadastrais (EM TABELA MARKDOWN: Item, Peça de Origem, Peça Divergente, Descrição Detalhada, Impacto Registral).
 4. Minuta de Nota Devolutiva Registral Previa (EM TEXTO DISCURSIVO COM ITENS NUMERADOS).
 """
 
 PROMPT_ANALISE_MATRICULA_ISOLADA = """
-Voce e um Engenheiro Agrimensor e Consultor Juridico Notarial/Registral senior da empresa TSG - Solucoes Ambientais, Topografia e Georreferenciamento, especializado em Direito Notarial e Registral Imobiliario Brasileiro, Lei 6.015/1973 e Lei 10.267/2001.
+Voce e um Engenheiro Agrimensor e Consultor Juridico Notarial/Registral senior da empresa TSG - Solucoes Ambientais, Topografia e Georreferenciamento, especializado em Direito Notarial e Registral Imobiliario Brasileiro, Lei 6.015/1973 (Arts. 212, 213, 234 e 235) e Lei 10.267/2001.
 
-O usuario enviou APENAS A MATRICULA DO IMOVEL A RETIFICAR (sem pecas tecnicas anexadas).
-Sua missao e realizar uma AUDITORIA JURIDICO-REGISTRAL PREVIA DA MATRICULA para orientar a elaboracao dos trabalhos topograficos de georreferenciamento e instrucao do processo de retificacao de area (art. 213, II da Lei 6.015/73).
+O usuario enviou APENAS A(S) MATRICULA(S) DO IMOVEL A RETIFICAR/UNIFICAR (sem pecas tecnicas anexadas).
+Sua missao e realizar uma AUDITORIA JURIDICO-REGISTRAL PREVIA para orientar a elaboracao dos trabalhos topograficos de georreferenciamento, retificacao de area e eventual unificacao/fusao (Arts. 234 e 235 da LRP).
 
 ESTRUTURA OBRIGATORIA DO RELATORIO:
-1. Diagnostico Dominial e Tabular do Imovel:
-   - Denominacao, Comarca, Circunscricao Registral, Numero da Matricula.
-   - Area Tabular Registrada (origem e eventuais destaques ao longo dos registros/averbacoes).
-   - Cadeia Dominial Resumida e Titulares Atuais do Dominio (qualificacao, estado civil, regime de bens e continuidade).
+1. Diagnostico Dominial e Tabular do(s) Imovel(is):
+   - Denominacao, Comarca, Circunscricao Registral, Numero(s) da(s) Matricula(s).
+   - Area Tabular Registrada individual e somada (em caso de multiplas matriculas para unificacao).
+   - Cadeia Dominial Resumida e Titulares Atuais do Dominio (verificando se ha identidade de proprietarios e regime de bens caso sejam multiplas matriculas para fusao).
 2. Gravames, Onus e Disponibilidade (Analise Critica):
-   - Detalhamento de penhoras, hipotecas, usufrutos, acoes reipersecutorias ou indisponibilidades averbadas.
-   - Orientacoes sobre a necessidade de autorizacao judicial ou levantamento de gravames em caso de retificacao/desmembramento futuro.
-3. Codigos Cadastrais e Situacao Tributaria Constante na Matricula:
-   - Codigo INCRA/SNCR, NIRF/CIB, CAR, indicando o que consta registrado e o que precisara ser atualizado/averbado.
+   - Detalhamento de penhoras, hipotecas, usufrutos, acoes reipersecutorias ou indisponibilidades averbadas em cada matricula.
+   - Orientacoes sobre a viabilidade de unificacao/retificacao frente aos gravames existentes.
+3. Codigos Cadastrais e Situacao Tributaria Constante na(s) Matricula(s):
+   - Codigo INCRA/SNCR, NIRF/CIB, CAR, indicando o que consta registrado e a necessidade de unificacao cadastral.
 4. Tabela de Confrontantes Tabulares Historicos:
-   - Montar uma TABELA MARKDOWN com os confrontantes citados na descricao da matricula: Confrontacao Original, Proprietario Tabular Mencionado, Matricula Indicada (se houver), Recomendacoes para a Topografia em Campo.
-5. Recomendacoes Tecnicas e Juridicas para o Georreferenciamento e Retificacao (TSG):
+   - Montar uma TABELA MARKDOWN com os confrontantes externos citados nas descricoes: Matrícula de Origem, Confrontação Original, Proprietário Tabular Mencionado, Recomendações para a Topografia em Campo.
+5. Recomendacoes Tecnicas e Juridicas para o Georreferenciamento e Retificacao/Unificacao (TSG):
    - Checklist dos documentos e cautelas que o agrimensor/proprietario devera providenciar antes de confeccionar a planta e memoriais definitivos.
 """
 
@@ -298,15 +309,16 @@ if st.sidebar.button("Terminar Sessão"):
     st.rerun()
 
 st.title("AUDITOR TSG")
-st.caption("Conferência prévia de peças técnicas completas OU auditoria registral isolada da matrícula.")
+st.caption("Conferência prévia de peças técnicas completas OU auditoria registral isolada (suporta múltiplas matrículas para unificação).")
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("1. Títulos Imobiliários (Obrigatório)")
-    uploaded_matricula_mae = st.file_uploader(
-        "Matrícula do Imóvel a Retificar (PDF/TXT) *",
+    uploaded_matriculas_mae = st.file_uploader(
+        "Matrícula(s) do Imóvel a Retificar / Unificar (Múltiplos PDFs aceitos) *",
         type=["pdf", "txt", "docx"],
+        accept_multiple_files=True,
         key="mat_mae"
     )
     uploaded_confrontantes = st.file_uploader(
@@ -332,10 +344,18 @@ with col2:
     )
 
 modo_completo = bool(uploaded_memoriais)
-if uploaded_matricula_mae and not uploaded_memoriais:
-    st.info("💡 **Modo Ativo: Auditoria Registral e Dominial da Matrícula Mãe**.")
-elif uploaded_matricula_mae and uploaded_memoriais:
-    st.success("📐 **Modo Ativo: Auditoria Cruzada Completa (Topografia + Registro)**.")
+qtd_mae = len(uploaded_matriculas_mae) if uploaded_matriculas_mae else 0
+
+if qtd_mae > 0 and not uploaded_memoriais:
+    if qtd_mae > 1:
+        st.info(f"💡 **Modo Ativo: Auditoria Registral de Múltiplas Matrículas ({qtd_mae} arquivos) para Unificação / Retificação**.")
+    else:
+        st.info("💡 **Modo Ativo: Auditoria Registral e Dominial da Matrícula Mãe**.")
+elif qtd_mae > 0 and uploaded_memoriais:
+    if qtd_mae > 1:
+        st.success(f"📐 **Modo Ativo: Auditoria Cruzada Completa com Unificação ({qtd_mae} matrículas mãe + Topografia)**.")
+    else:
+        st.success("📐 **Modo Ativo: Auditoria Cruzada Completa (Topografia + Registro)**.")
 
 st.divider()
 
@@ -344,15 +364,15 @@ if st.button("🔍 Executar Auditoria TSG", type="primary", use_container_width=
         st.error("Chave de API não configurada no servidor. Verifique os Secrets.")
         st.stop()
     
-    if not uploaded_matricula_mae:
-        st.warning("É obrigatório carregar ao menos a Matrícula do Imóvel.")
+    if not uploaded_matriculas_mae:
+        st.warning("É obrigatório carregar ao menos uma Matrícula do Imóvel.")
         st.stop()
 
     prompt_sistema = PROMPT_AUDITORIA_COMPLETA if modo_completo else PROMPT_ANALISE_MATRICULA_ISOLADA
     instrucao_usuario = (
-        "Realize a conferência prévia e o confronto rigoroso considerando os parâmetros estritos de análise (validando apenas os dados declarados nas peças técnicas, admitindo 1 coproprietário representante e desconsiderando firmas/reconhecimentos)."
+        "Realize a conferência prévia e o confronto rigoroso considerando os parâmetros estritos de análise (validando apenas os dados declarados nas peças técnicas, admitindo 1 coproprietário representante e desconsiderando firmas/reconhecimentos). Atenção especial caso haja múltiplas matrículas paradigma para unificação."
         if modo_completo else
-        "Realize a auditoria jurídica e registral profunda exclusivamente com base na matrícula apresentada, estruturando os diagnósticos de disponibilidade, continuidade e a tabela de confrontantes históricos com recomendações para a topografia."
+        "Realize a auditoria jurídica e registral profunda exclusivamente com base na(s) matrícula(s) paradigma(s) apresentada(s), estruturando os diagnósticos de disponibilidade, continuidade, viabilidade de unificação (se múltiplas) e a tabela de confrontantes históricos com recomendações para a topografia."
     )
 
     client = genai.Client(api_key=api_key)
@@ -362,7 +382,7 @@ if st.button("🔍 Executar Auditoria TSG", type="primary", use_container_width=
         temp_paths = []
 
         try:
-            all_files = [uploaded_matricula_mae]
+            all_files = list(uploaded_matriculas_mae)
             if uploaded_memoriais:
                 all_files.extend(uploaded_memoriais)
             if uploaded_confrontantes:
@@ -424,8 +444,8 @@ if st.button("🔍 Executar Auditoria TSG", type="primary", use_container_width=
 
             pdf_bytes = exportar_para_pdf(response.text)
             
-            # Extrai o número da matrícula mãe e monta o nome solicitado
-            num_matricula = extrair_numero_matricula(response.text, uploaded_matricula_mae.name)
+            # Extrai o(s) número(s) da(s) matrícula(s) mãe e monta o nome do arquivo
+            num_matricula = extrair_numero_matricula(response.text, uploaded_matriculas_mae)
             nome_arquivo_pdf = f"TSG_AUDITORIA_MAT_{num_matricula}.pdf"
 
             st.download_button(
